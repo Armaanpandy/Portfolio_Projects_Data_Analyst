@@ -10,3 +10,5 @@ The director of marketing believes the company's future success depends on maxim
 
 * Design marketing strategies aimed at converting casual riders into annual members.
 
+### DATA :
+https://divvy-tripdata.s3.amazonaws.com/index.html
