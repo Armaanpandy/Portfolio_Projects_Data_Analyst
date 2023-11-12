@@ -1,0 +1,342 @@
+---
+title: "Bike Share Case Study"
+author: "Armaan Singh Pandher"
+date: "`r Sys.Date()`"
+output: html_document
+---
+<hr>
+## Problem Statement
+<hr>
+The director of marketing believes the company's future success depends on maximizing the number of annual memberships. Therefore, your team wants to understand how casual riders and annual members use Cyclistic bikes differently. From these insights, your team will design a new marketing strategy to convert casual riders into annual members. But first, Cyclistic executives must approve your recommendations, so they must be backed up with compelling data insights and professional data visualizations.
+
+### **Business Goal** :
+
+-   Differentiate between `Member` and `Casual` User.
+
+-   Design marketing strategies aimed at converting casual riders into annual members.
+
+<hr>
+## Business Takeaways
+<hr>
+* **What is your final conclusion based on your analysis?**
+  
+  * The marketing strategy should primarily focus on weekend promotions targeting `members` during Fridays, Saturdays, and Sundays. As observed in Figure 6, there is a notable increase in ride counts for the `casual` user type during these weekends. This presents an opportunity to incentive `casual` users to transition into becoming `members` of the bike share service.
+  
+  * `casual` members exhibit a notably higher average ride duration, as indicated in `Fig 3`. Consequently, it is prudent to contemplate implementing strategies centered on offering discounts for longer rides or introducing special deals tailored for extended ride duration.
+
+<hr>
+## CONTENT:
+<hr>
+
+>* [Data Preparation](#Data_Preperation)
+
+>* [Data Transformation](#Data_Transformation)
+
+>* [Initial Overview of Data](#Initial_Overview_of_Data)
+
+<hr>
+## Data Preparation {#Data_Preperation}
+<hr>
+### Prepare Environment
+
+```{r load libraries}
+library(readr)
+library(tidyverse)
+library(dplyr)
+library(skimr)
+library(ggplot2)
+library(knitr)
+```
+
+### Loading raw data
+
+```{r Loading Data, warning=FALSE, include=FALSE}
+data_jan<-read_csv("Bike Share Data/202301-divvy-tripdata.csv")
+data_feb<-read_csv("Bike Share Data/202302-divvy-tripdata.csv")
+data_march<-read_csv("Bike Share Data/202303-divvy-tripdata.csv")
+data_april<-read_csv("Bike Share Data/202304-divvy-tripdata.csv")
+data_may<-read_csv("Bike Share Data/202305-divvy-tripdata.csv")
+data_june<-read_csv("Bike Share Data/202306-divvy-tripdata.csv")
+data_july<-read_csv("Bike Share Data/202307-divvy-tripdata.csv")
+```
+
+### Data Verification 
+
+**Before merging the monthly datasets, it is imperative to confirm the uniformity of column names.**
+
+```{r Comparing column names, include=FALSE}
+#Comparing column names
+
+df_compare<-tibble(sort(colnames(data_jan)),sort(colnames(data_feb)),sort(colnames(data_march)),sort(colnames(data_april)),sort(colnames(data_may)),sort(colnames(data_june)),sort(colnames(data_july)))
+
+```
+
+This code snippet is designed to create a table where each column contains the column names from different tables, arranged alphabetically in rows. This can be utilized for the purpose of comparing column names across multiple tables.
+
+```{r Check Wether Column names are same}
+
+#Check Whether Column names are same  
+df_compare$are_similar<-all.equal(all.equal(colnames(data_jan)==colnames(data_feb),colnames(data_march)==colnames(data_april)),all.equal(colnames(data_may)==colnames(data_july),colnames(data_june)==colnames(data_july)))
+
+FALSE%in%df_compare$are_similar
+```
+
+Once we compare all values in a row to check whether they are all exactly same or not. since `FALSE` is not in the column name called `are_similar` we can safely conclude all column names are the same
+
+```{r Show Column names table}
+kable(df_compare,caption = "List of Column Names")
+```
+
+### Aggregating Data
+
+```{r Aggregating Data}
+data<-bind_rows(data_jan,data_feb,data_march,data_april,data_may,data_june,data_july)
+colnames(data)
+```
+<hr>
+## Data Transformation {#Data_Transformation}
+<hr>
+
+
+### Dropping Irrelevant Columns
+
+```{r Dropping Irrelevant Columns}
+
+clean_data<-select(data,-c(start_lat,start_lng, end_lat,end_lng))
+colnames(clean_data)
+
+```
+
+### Changing column names
+
+
+Using the `mutate()` function we are going to change the names of the columns to be relevant
+
+```{r rename columns}
+
+clean_data<-clean_data %>%   rename(ride_type=rideable_type,start_time=started_at,end_time=ended_at,user_type=member_casual)
+
+```
+
+You can check the new column names using the `colnames()`
+
+```{r Colnames new}
+colnames(clean_data)
+```
+
+### Adding ride duration Column to the data
+
+We are only given ride's start time(`started_at`) and end time(`ended_at`), so calculating the ride duration can help us in calculating average duration each trip takes and how do they differ based on membership type
+
+```{r,warning=FALSE}
+
+clean_data$ride_duration=round(difftime(clean_data$end_time,clean_data$start_time,units = "mins"),2)
+
+```
+
+## Initial Overview of Data {#Initial_Overview_of_Data}
+
+**We use `Skim_without_charts()` function of the `skimr` library to get a sense of the data**
+
+```{r}
+skim_without_charts(clean_data)
+```
+
+**Some Insights we can derive from the above data:** 
+
+* `ride_id` is unique and complete.
+
+- There are only 3 bike types.
+
+- `start_time` and `end_time` are complete.
+
+- Approximately 500,000 records lack both a start station or an end station, and it's important to consider this aspect during subsequent stages of the analysis.
+
+- There only 2 types of `user_types` i.e `casual` or `member`
+
+- There are 52 rides where `start_time` is later than `end_time` so we better dop those values by filtering them out of the data we are using.
+
+```{r}
+clean_data<-clean_data %>% filter(start_time<=end_time)
+```
+
+### Date Range we are dealing with
+
+```{r}
+start_date<-min(clean_data$start_time) %>% format("%d/%m/%Y")
+end_date<-max(clean_data$start_time)%>% format("%d/%m/%Y")
+
+cat("Start Date:",start_date,"\nEnd Date:",end_date)
+```
+### Market Size / Demographic deatails
+
+```{r}
+
+user_count<-clean_data %>% group_by(user_type)%>% summarise(count=n(),User_percentage=round(count/nrow(clean_data)*100,2))
+kable(user_count,caption="Demographic Details")
+```
+
+```{r Demographic}
+ggplot(user_count,aes(x="",y=User_percentage,fill=User_percentage))+geom_bar(stat = "identity",width=1)+coord_polar("y",start=0)
+```
+
+### Monthly demand tracking
+<hr>
+```{r}
+clean_data %>% group_by(month=month.abb[month(start_time)]) %>% summarise(count=n()) %>% 
+  ggplot(aes(x=month,y=count, group=1))+geom_line(size=1.2)+geom_point(size=2.5)+scale_x_discrete(limits=c("Jan","Feb","Mar","Apr","May","Jun","Jul"))+labs(y="Ride Count",x=element_blank(), Title="Demand over the Months",caption = "There is growing demand for the bike share")
+```
+
+
+```{r}
+clean_data %>% group_by(month=month.abb[month(start_time)],,user_type) %>% summarise(count=n()) %>% 
+  ggplot(aes(x=month,y=count, group=user_type,color=user_type))+geom_line(size=1.2)+geom_point(size=2.5)+scale_x_discrete(limits=c("Jan","Feb","Mar","Apr","May","Jun","Jul"))+labs(y="Ride Count",x=element_blank(), Title="Demand over the Months",caption = "There is growing demand for the bike share")
+```
+
+
+## How members and casual riders differ?
+<hr>
+
+In this section we try and see how members and casual riders differ from each other based on ride durations.
+
+```{r}
+clean_data %>% ggplot(aes(x=sort(user_type,decreasing =TRUE),fill=ride_type))+geom_bar()+scale_fill_manual(values = c("classic_bike"="purple",docked_bike="pink",electric_bike="gold"))+labs(tags ="Fig 1",caption="Armaan Singh Pandher",title="Ride Count of different Ride Types",x=element_blank(),y="Ride Count")
+```
+
+### User Bike Preference
+<hr>
+
+```{r}
+clean_data %>% 
+  ggplot(aes(x=ride_type,fill=ride_type))+geom_bar()+
+labs(x=element_blank(),y="No. of Rides",tag="Fig 2",title = "Bike Preference",caption = "Armaan Singh Pandher")+scale_fill_manual(values = c("classic_bike"="purple",docked_bike="pink",electric_bike="gold"))+facet_wrap(~user_type)+theme(legend.position = "none")
+```
+
+### Inference on User Bike Preference
+
+**Some key points are:**
+
+-   Both `member` and `casual` user type prefer classic bike and electric bike as they are the most used types of bikes.
+
+-   Docked bikes are the least used bike types.
+
+### Average Ride duration based on `user_type`
+<hr>
+```{r Broad Summary}
+kable(clean_data %>% group_by(user_type) %>% summarise(Total_ride_time=sum(ride_duration),Number_of_rides=n(),AVG_ride_duration=round(mean(ride_duration),2)),caption="Average Ride Duration User Wise")
+```
+
+```{r AVG ride duration user type plot}
+clean_data %>% 
+  group_by(user_type) %>% 
+  summarise(Total_ride_time=sum(ride_duration),Number_of_rides=n(),AVG_ride_duration=round(mean(ride_duration),2)) %>% 
+  ggplot(aes(x=fct_inorder(user_type),y=AVG_ride_duration,group=1,fill=user_type))+geom_bar(stat = "identity")+
+  labs(title="Average User Ride Duration",caption = "Armaan Singh Pandher",x=element_blank(),y="Ride Duration(min)", tag = "Fig 3")+theme(legend.position = "None")
+```
+
+### Average Ride duration based on `ride_type`
+<hr>
+
+```{r warning=FALSE}
+kable(clean_data %>% group_by(user_type,ride_type) %>%
+        summarise(Ride_Count=n(),AVG_ride_duration=round(mean(ride_duration),2)),caption="Average ride duration based on Bike Type")
+```
+
+```{r}
+clean_data %>% group_by(ride_type,user_type) %>%
+        summarise(Ride_Count=n(),AVG_ride_duration=round(mean(ride_duration),2)) %>% arrange(user_type,desc(AVG_ride_duration))%>% 
+  ggplot(aes(y=AVG_ride_duration,x=fct_inorder(ride_type),group=1,fill=ride_type))+geom_bar(stat="identity")+
+  labs(title = "Average Ride Duration on Bike Type",x=element_blank(),y="Ride Duration(min)",caption = "Armaan Singh Pandher",tag="Fig 4",fill="Ride Type")+scale_fill_manual(values =c("classic_bike"="purple",docked_bike="pink",electric_bike="gold"))+facet_wrap(~user_type)+theme(legend.position = "none")
+```
+
+```{r}
+clean_data %>% group_by(user_type,ride_type) %>%
+        summarise(Ride_Count=n(),AVG_ride_duration=round(mean(ride_duration),2)) %>% 
+  ggplot(aes(y=sort(AVG_ride_duration,decreasing=TRUE),x=ride_type,group=1,fill=ride_type))+geom_bar(stat="identity")+labs(title = "Average Ride Duration on Bike Type",x=element_blank(),y="Ride Duration(min)",caption = "Armaan Singh Pandher",tag="Fig 5")+facet_wrap(~user_type)+scale_fill_manual(values = c("classic_bike"="purple",docked_bike="gold",electric_bike="pink"))+theme(legend.position = "none")
+```
+
+#### Inference-Average Ride duration
+
+-   On average, users classified as `casual` tend to utilize the bike share service `X2` for longer durations than members.
+-   Among `casual` users, docked bikes are the least utilized mode of bikes, with the longest average usage time, followed by classic bikes, which are one of the most frequently used bike types.
+-   It appears that both `member` and `casual` users primarily employ the bike service for short-distance rides, typically lasting around 30 minutes. Consequently, ride duration may not play as significant a role in determining the marketing strategy as the bike preference factors discussed above.
+
+### Weekday usage analysis
+<hr>
+
+We are adding a column named `weekday` in our data frame for further analysis
+
+```{r Adding weekdays to df}
+clean_data<-clean_data %>% mutate(weekday=weekdays(start_time))
+```
+
+```{r,warning=FALSE}
+clean_data %>% 
+  group_by(user_type,weekday)%>% summarise(count=n()) %>%  
+  ggplot(aes(x=weekday,y=count,colour=user_type,group=user_type))+geom_point()+geom_line(size=1.5)+
+  scale_x_discrete(limits = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday","Saturday","Sunday"))+labs(x=element_blank(),y="Ride Count",title = "Ride Count Vs Weekday",color="User",tags="Fig 6")
+```
+
+```{r}
+clean_data %>% 
+  group_by(user_type,weekday) %>% summarise(count=n(),AVG_ride_duration=mean(ride_duration)) %>%  
+  ggplot(aes(x=weekday,y=AVG_ride_duration,group=1,fill=user_type))+geom_bar(stat="identity")+facet_wrap(~user_type)+theme(axis.text.x = element_text(angle=45),legend.position ="none")+scale_x_discrete(limits=c("Monday", "Tuesday", "Wednesday", "Thursday","Friday","Saturday","Sunday"))+labs(y="Average Ride Duration",x=element_blank(),tags="Fig 7")
+  
+```
+
+```{r ride type weekly usage}
+clean_data %>% 
+  group_by(weekday,user_type,ride_type) %>% summarise(count=n())%>%
+  ggplot(aes(x=weekday,y=count,group=ride_type,color=ride_type))+geom_point()+geom_line(size=1.3)+facet_grid(user_type~ride_type)+scale_x_discrete(limits=c("Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"))+labs(x=element_blank(),y="Ride count",title = "Weekday Vs Bike Type used",tags="Fig 8",caption = "Armaan Singh Pandher")+theme(axis.text.x = element_blank(),axis.ticks.x = element_blank() )
+```
+
+### Inference on weekday wise usage
+
+-   The graph strongly indicates that weekends consistently demonstrate the highest demand among users categorized as `casual`. Consequently, it is prudent to direct our marketing strategy predominantly towards these days since our main objective is conversion of 'casual`user type into`member` user type.
+
+-   The graph strongly indicates that weekdays consistently demonstrate the highest demand among users categorized as `member`.
+  
+# **How could your team and business apply your insights?**
+<hr>
+  * **Weekend Promotions for Members**: Our marketing strategy should prioritize weekend promotions, targeting "members" during Fridays, Saturdays, and Sundays. These specific days exhibit a significant increase in ride counts for "casual" users, as observed in Figure 6. This provides an opportunity to attract and incentive "casual" users to transition into becoming "members" of our bike share service.
+
+  * **Discounts for Longer Rides**: Given that "casual" members demonstrate a substantially higher average ride duration, as evident in Figure 3, we recommend developing strategies that revolve around providing discounts for extended ride duration. Additionally, introducing special deals tailored for longer rides can be a valuable approach to attract and retain our customers.
+
+These strategies capitalize on the observed user behavior and aim to enhance user engagement, membership conversion, and overall customer satisfaction. By aligning our marketing efforts with these insights, we aim to optimize the effectiveness of our campaigns and drive business growth.
+
+# **What next steps would you or your stakeholders take based on your findings?**
+<hr>
+  * **Strategy Development**: Collaborate with your marketing and business strategy teams to develop detailed marketing strategies based on the insights. Consider how to implement the weekend promotions for members and the discount offers for longer rides. Define the timeline and budget for these initiatives.
+
+  * **Campaign Planning**: Plan and create marketing campaigns that align with the developed strategies. Determine the channels and platforms for promotion, messaging, and creative elements of the campaigns. Ensure that the marketing efforts are well-coordinated and timed to coincide with weekends and to highlight the benefits of longer rides.
+
+  * **Data Tracking**: Set up systems to track the effectiveness of the new strategies and campaigns. Monitor key performance indicators (KPIs) such as membership conversions, ride counts, and ride durations. Collect feedback from customers to assess their response to the initiatives.
+
+  * **A/B Testing**: Consider running A/B tests to evaluate the impact of different promotional approaches. This can help refine your strategies and identify the most effective marketing tactics.
+
+  * **Customer Engagement**: Focus on engaging with your customer base to promote the new offers and build loyalty. Consider using email marketing, social media engagement, and other customer outreach methods.
+
+  * **Feedback Loop**: Establish a feedback loop to continually assess the success of the initiatives and make adjustments as necessary. Regularly analyze data and customer feedback to refine the strategies over time.
+
+  * **Performance Evaluation**: Periodically evaluate the performance of the strategies to ensure they are meeting the business objectives. Be prepared to make changes or pivot if certain tactics are not yielding the expected results.
+
+
+  * **Competitor Analysis**: Keep an eye on the competitive landscape to ensure your strategies remain relevant and competitive within the industry.
+
+
+* **Is there additional data you could use to expand on your findings?**
+  * **Customer_ID Tracking**: Implementation of Customer_ID tracking would furnish valuable insights into customer-related data and facilitate the identification of repeat customers. By capturing customer behavior and preferences, we can enhance our understanding of user engagement and loyalty.
+
+  * **Referral_code Tracking**: The inclusion of Referral_code tracking is instrumental in evaluating the effectiveness of marketing campaigns. This data enables the assessment of the number of users acquired through referrals versus organic user acquisition, thereby aiding in campaign performance measurement.
+
+  * **Distance_traveled Tracking**: Prioritizing Distance_traveled tracking is paramount in determining the optimal stocking of bike types at each station. It empowers us to analyze the distance traveled with each bike type and ascertain the stations that serve as starting points for longer rides. This knowledge is invaluable for station inventory management and enhancing the user experience by ensuring the availability of the right bike types at the right stations.
+
+By incorporating these data tracking measures, we can significantly augment our dataset and, subsequently, our analytical capabilities, ultimately leading to more informed decision-making and the refinement of our strategies.
+
+
+
+
+
+
+
+
